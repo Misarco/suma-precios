@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/ink"
+    android:orientation="vertical">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="@color/panel"
+        app:navigationIcon="@drawable/ic_back"
+        app:navigationIconTint="@color/paper"
+        app:title="Ajustes"
+        app:titleTextColor="@color/paper" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="20dp">
+
+            <!-- Pausa entre lecturas -->
+            <LinearLayout style="@style/SettingRow">
+                <TextView style="@style/SettingTitle" android:text="Pausa entre lecturas" />
+                <TextView android:id="@+id/pauseValue" style="@style/SettingValue" />
+            </LinearLayout>
+            <TextView
+                style="@style/SettingHelp"
+                android:text="Después de apuntar un número, espera este tiempo antes de leer el siguiente." />
+            <com.google.android.material.slider.Slider
+                android:id="@+id/pauseSlider"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:stepSize="1"
+                android:value="10"
+                android:valueFrom="5"
+                android:valueTo="30"
+                app:labelBehavior="gone" />
+
+            <View style="@style/Divider" />
+
+            <!-- Mantener pulsado -->
+            <LinearLayout style="@style/SettingRow">
+                <TextView style="@style/SettingTitle" android:text="Mantener pulsado" />
+                <TextView android:id="@+id/longValue" style="@style/SettingValue" />
+            </LinearLayout>
+            <TextView
+                style="@style/SettingHelp"
+                android:text="Tiempo que hay que dejar el dedo sobre un número para que salgan Editar, Descuento y Borrar." />
+            <com.google.android.material.slider.Slider
+                android:id="@+id/longSlider"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:stepSize="1"
+                android:value="10"
+                android:valueFrom="3"
+                android:valueTo="30"
+                app:labelBehavior="gone" />
+
+            <View style="@style/Divider" />
+
+            <!-- Tipo de números -->
+            <TextView style="@style/SettingTitle" android:text="Tipo de números" />
+            <RadioGroup
+                android:id="@+id/modeGroup"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp">
+
+                <RadioButton
+                    android:id="@+id/modeAuto"
+                    style="@style/SettingRadio"
+                    android:text="Automático\nCon coma es decimal (3,50). Sin coma es entero (20)." />
+
+                <RadioButton
+                    android:id="@+id/modeEnteros"
+                    style="@style/SettingRadio"
+                    android:text="Solo enteros\nIgnora comas y puntos: 25 y 25,00 valen 25." />
+
+                <RadioButton
+                    android:id="@+id/modeCentimos"
+                    style="@style/SettingRadio"
+                    android:text="Siempre con céntimos\nLas dos últimas cifras son céntimos: 250 vale 2,50." />
+            </RadioGroup>
+
+            <View style="@style/Divider" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnReset"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:text="Restablecer ajustes"
+                android:textColor="@color/danger"
+                app:cornerRadius="14dp"
+                app:strokeColor="@color/danger" />
+
+            <TextView
+                style="@style/SettingHelp"
+                android:layout_marginTop="8dp"
+                android:text="Vuelve a los valores originales. No borra la venta en curso ni el historial." />
+        </LinearLayout>
+    </ScrollView>
+</LinearLayout>
