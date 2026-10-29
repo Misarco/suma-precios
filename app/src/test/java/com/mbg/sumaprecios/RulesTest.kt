@@ -39,6 +39,18 @@ class RulesTest {
         assertEquals(listOf(1000L), read("1O"))
     }
 
+    @Test fun compararConLetras() {
+        assertEquals(listOf(360L), read("3,b0"))
+        assertEquals(listOf(1700L), read("1T"))
+        assertEquals(listOf(450L), read("y,50"))
+        assertEquals(listOf(475L), read("4,Ts"))
+        assertTrue(read("y").isEmpty())           // una "y" suelta no es un 4
+        assertEquals(listOf(350L), read("Pollo3,50")) // en palabras normales no se toca
+        // Desactivado: solo cifras de verdad
+        val off = NumberParser.extract(listOf(listOf(Word("3,b0", b))), NumberMode.AUTO, letters = false).map { it.cents }
+        assertEquals(listOf(300L), off)
+    }
+
     @Test fun cifrasPegadasSeJuntan() {
         val pegados = NumberParser.extract(
             listOf(listOf(Word("3", Box(0f, 0f, 10f, 20f)), Word("50", Box(12f, 0f, 30f, 20f)))),

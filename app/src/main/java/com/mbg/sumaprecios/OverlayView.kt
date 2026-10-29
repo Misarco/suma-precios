@@ -50,8 +50,50 @@ class OverlayView(context: Context, attrs: AttributeSet?) : View(context, attrs)
     private val barBg = Paint().apply { color = Color.argb(90, 255, 255, 255) }
     private val barFg = Paint().apply { color = accent }
 
+    /** Zona de lectura guardada, en fracciones de la pantalla (0..1). */
+    private var zoneFractions: FloatArray = Store.DEFAULT_ZONE.copyOf()
+
+    /** Se llama al soltar el dedo tras mover o redimensionar la zona. */
+    var onZoneChanged: ((FloatArray) -> Unit)? = null
+
+    private var dragMode = DRAG_NONE
+    private var lastX = 0f
+    private var lastY = 0f
+    private val handlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE }
+
+    fun setZoneFractions(f: FloatArray) {
+        zoneFractions = f.copyOf()
+        applyFractions()
+        invalidate()
+    }
+
+    private fun applyFractions() {
+        if (width == 0 || height == 0) return
+        val f = zoneFractions
+        zone.set(f[0] * width, f[1] * height, f[2] * width, f[3] * height)
+        clampZone()
+    }
+
+    private fun currentFractions() = floatArrayOf(
+        zone.left / width, zone.top / height, zone.right / width, zone.bottom / height
+    )
+
+    private fun clampZone() {
+        val minW = 90 * dp
+        val minH = 60 * dp
+        val topLimit = 56 * dp // deja sitio al texto de ayuda
+        if (zone.width() < minW) zone.right = zone.left + minW
+        if (zone.height() < minH) zone.bottom = zone.top + minH
+        if (zone.left < 0f) zone.offset(-zone.left, 0f)
+        if (zone.right > width) zone.offset(width - zone.right, 0f)
+        if (zone.top < topLimit) zone.offset(0f, topLimit - zone.top)
+        if (zone.bottom > height - 24 * dp) zone.offset(0f, height - 24 * dp - zone.bottom)
+        zone.left = zone.left.coerceAtLeast(0f)
+        zone.right = zone.right.coerceAtMost(width.toFloat())
+    }
+
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-        zone.set(w * 0.07f, h * 0.14f, w * 0.93f, h * 0.80f)
+        applyFractions()
     }
 
     fun setLive(c: List<Candidate>, blocked: Set<Long>) {
@@ -96,6 +138,11 @@ class OverlayView(context: Context, attrs: AttributeSet?) : View(context, attrs)
             canvas.drawLine(right - c, top, right, top, cornerPaint); canvas.drawLine(right, top, right, top + c, cornerPaint)
             canvas.drawLine(right, bottom - c, right, bottom, cornerPaint); canvas.drawLine(right, bottom, right - c, bottom, cornerPaint)
             canvas.drawLine(left + c, bottom, left, bottom, cornerPaint); canvas.drawLine(left, bottom, left, bottom - c, cornerPaint)
+            if (choices.isEmpty()) {
+                val hr = (if (dragMode != DRAG_NONE) 9 else 6) * dp
+                canvas.drawCircle(left, top, hr, handlePaint); canvas.drawCircle(right, top, hr, handlePaint)
+                canvas.drawCircle(left, bottom, hr, handlePaint); canvas.drawCircle(right, bottom, hr, handlePaint)
+            }
         }
 
         val cooling = now < cooldownEnd
@@ -164,13 +211,73 @@ class OverlayView(context: Context, attrs: AttributeSet?) : View(context, attrs)
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (choices.isEmpty()) return false
-        if (event.actionMasked == MotionEvent.ACTION_UP) {
-            val pad = 18 * dp
-            val i = choices.indexOfFirst { it.box.contains(event.x, event.y, pad) }
-            if (i >= 0) onChoiceTap?.invoke(i)
+        if (choices.isNotEmpty()) {
+            // Modo elegir: los toques eligen números
+            if (event.actionMasked == MotionEvent.ACTION_UP) {
+                val pad = 18 * dp
+                val i = choices.indexOfFirst { it.box.contains(event.x, event.y, pad) }
+                if (i >= 0) onChoiceTap?.invoke(i)
+            }
+            return true
         }
-        return true
+
+        // Modo normal: arrastrar esquinas para cambiar el tamaño, o el interior para mover la zona
+        val x = event.x
+        val y = event.y
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                val grab = 34 * dp
+                dragMode = when {
+                    near(x, y, zone.left, zone.top, grab) -> DRAG_TL
+                    near(x, y, zone.right, zone.top, grab) -> DRAG_TR
+                    near(x, y, zone.left, zone.bottom, grab) -> DRAG_BL
+                    near(x, y, zone.right, zone.bottom, grab) -> DRAG_BR
+                    zone.contains(x, y) -> DRAG_MOVE
+                    else -> DRAG_NONE
+                }
+                lastX = x; lastY = y
+                return dragMode != DRAG_NONE
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (dragMode == DRAG_NONE) return false
+                val dx = x - lastX
+                val dy = y - lastY
+                lastX = x; lastY = y
+                val minW = 90 * dp
+                val minH = 60 * dp
+                when (dragMode) {
+                    DRAG_MOVE -> zone.offset(dx, dy)
+                    DRAG_TL -> { zone.left = (zone.left + dx).coerceAtMost(zone.right - minW); zone.top = (zone.top + dy).coerceAtMost(zone.bottom - minH) }
+                    DRAG_TR -> { zone.right = (zone.right + dx).coerceAtLeast(zone.left + minW); zone.top = (zone.top + dy).coerceAtMost(zone.bottom - minH) }
+                    DRAG_BL -> { zone.left = (zone.left + dx).coerceAtMost(zone.right - minW); zone.bottom = (zone.bottom + dy).coerceAtLeast(zone.top + minH) }
+                    DRAG_BR -> { zone.right = (zone.right + dx).coerceAtLeast(zone.left + minW); zone.bottom = (zone.bottom + dy).coerceAtLeast(zone.top + minH) }
+                }
+                clampZone()
+                invalidate()
+                return true
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (dragMode == DRAG_NONE) return false
+                dragMode = DRAG_NONE
+                zoneFractions = currentFractions()
+                onZoneChanged?.invoke(zoneFractions.copyOf())
+                invalidate()
+                return true
+            }
+        }
+        return dragMode != DRAG_NONE
+    }
+
+    private fun near(x: Float, y: Float, cx: Float, cy: Float, r: Float) =
+        (x - cx) * (x - cx) + (y - cy) * (y - cy) <= r * r
+
+    companion object {
+        private const val DRAG_NONE = 0
+        private const val DRAG_MOVE = 1
+        private const val DRAG_TL = 2
+        private const val DRAG_TR = 3
+        private const val DRAG_BL = 4
+        private const val DRAG_BR = 5
     }
 
     private fun withAlpha(color: Int, a: Int) =

@@ -92,6 +92,28 @@
 
             <View style="@style/Divider" />
 
+            <!-- Comparar con letras -->
+            <LinearLayout style="@style/SettingRow">
+                <TextView style="@style/SettingTitle" android:text="Comparar con letras" />
+                <com.google.android.material.materialswitch.MaterialSwitch
+                    android:id="@+id/lettersSwitch"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" />
+            </LinearLayout>
+            <TextView
+                style="@style/SettingHelp"
+                android:text="Convierte en cifras las letras que se confunden con números al escribir a mano: y u h A → 4 · b G → 6 · T F f + → 7 · O o D → 0 · I l | → 1 · Z z → 2 · S s → 5 · B → 8 · g q → 9. Solo se aplica junto a cifras o a una coma, nunca en palabras sueltas." />
+
+            <View style="@style/Divider" />
+
+            <!-- Zona de lectura -->
+            <TextView style="@style/SettingTitle" android:text="Zona de lectura" />
+            <TextView
+                style="@style/SettingHelp"
+                android:text="En la pantalla de la cámara, arrastra las esquinas del recuadro para cambiar su tamaño, o el interior para moverlo." />
+
+            <View style="@style/Divider" />
+
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnReset"
                 style="@style/Widget.Material3.Button.OutlinedButton"

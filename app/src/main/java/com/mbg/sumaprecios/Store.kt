@@ -33,9 +33,24 @@ class Store(context: Context) {
             .getOrDefault(NumberMode.AUTO)
         set(v) = p.edit().putString(KEY_MODE, v.name).apply()
 
+    /** "Comparar con letras": convierte letras parecidas en cifras (b -> 6, T -> 7...). */
+    var letters: Boolean
+        get() = p.getBoolean(KEY_LETTERS, true)
+        set(v) = p.edit().putBoolean(KEY_LETTERS, v).apply()
+
+    /** Zona de lectura como fracciones de la pantalla de cámara: izquierda, arriba, derecha, abajo. */
+    var zone: FloatArray
+        get() {
+            val s = p.getString(KEY_ZONE, null) ?: return DEFAULT_ZONE.copyOf()
+            val v = s.split(";").mapNotNull { it.toFloatOrNull() }
+            return if (v.size == 4) v.toFloatArray() else DEFAULT_ZONE.copyOf()
+        }
+        set(v) = p.edit().putString(KEY_ZONE, v.joinToString(";")).apply()
+
     /** Restablecer ajustes: no toca la venta en curso ni el historial. */
     fun resetSettings() {
-        p.edit().remove(KEY_PAUSE).remove(KEY_LONG).remove(KEY_MODE).apply()
+        p.edit().remove(KEY_PAUSE).remove(KEY_LONG).remove(KEY_MODE)
+            .remove(KEY_LETTERS).remove(KEY_ZONE).apply()
     }
 
     fun loadItems(): List<SaleItem> = runCatching {
@@ -67,6 +82,9 @@ class Store(context: Context) {
         const val DEFAULT_PAUSE_MS = 1000L
         const val DEFAULT_LONG_PRESS_MS = 1000L
         const val HISTORY_SIZE = 15
+        val DEFAULT_ZONE = floatArrayOf(0.07f, 0.14f, 0.93f, 0.80f)
+        private const val KEY_LETTERS = "letters"
+        private const val KEY_ZONE = "zone"
         private const val KEY_PAUSE = "pause_ms"
         private const val KEY_LONG = "long_press_ms"
         private const val KEY_MODE = "mode"

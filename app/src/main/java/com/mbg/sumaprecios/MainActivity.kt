@@ -38,10 +38,12 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
+import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.snackbar.Snackbar
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.Text
 import com.google.mlkit.vision.text.TextRecognition
@@ -61,6 +63,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var totalText: TextView
     private lateinit var countText: TextView
     private lateinit var torchButton: ImageButton
+    private lateinit var undoButton: MaterialButton
 
     private lateinit var store: Store
     private lateinit var adapter: ItemsAdapter
@@ -70,6 +73,15 @@ class MainActivity : AppCompatActivity() {
     private val detector = Detector()
     private val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
     private var mode = NumberMode.AUTO
+    private var letters = true
+
+    /** Registro de cambios de la venta en curso, para Deshacer (se vacía en Nueva venta). */
+    private sealed class Change {
+        data class Added(val id: Long) : Change()
+        data class Removed(val item: SaleItem, val index: Int) : Change()
+        data class Edited(val id: Long, val oldCents: Long, val oldDiscount: Int) : Change()
+    }
+    private val undoStack = ArrayDeque<Change>()
     private var camera: Camera? = null
     private var torchOn = false
 
@@ -96,6 +108,7 @@ class MainActivity : AppCompatActivity() {
         totalText = findViewById(R.id.totalText)
         countText = findViewById(R.id.countText)
         torchButton = findViewById(R.id.btnTorch)
+        undoButton = findViewById(R.id.btnUndo)
 
         store = Store(this)
         executor = Executors.newSingleThreadExecutor()
@@ -105,7 +118,13 @@ class MainActivity : AppCompatActivity() {
         numbersList.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
         numbersList.adapter = adapter
         if (items.isNotEmpty()) numbersList.scrollToPosition(items.size - 1)
+        attachSwipeToDelete()
         updateTotal()
+        updateUndo()
+        undoButton.setOnClickListener { undo() }
+
+        overlay.setZoneFractions(store.zone)
+        overlay.onZoneChanged = { store.zone = it }
 
         overlay.onChoiceTap = ::onChoiceTap
         findViewById<MaterialButton>(R.id.btnContinue).setOnClickListener { unfreeze() }
@@ -127,9 +146,12 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         val newMode = store.mode
-        if (newMode != mode) detector.reset()
+        val newLetters = store.letters
+        if (newMode != mode || newLetters != letters) detector.reset()
         mode = newMode
+        letters = newLetters
         detector.cooldownMs = store.pauseMs
+        overlay.setZoneFractions(store.zone)
     }
 
     override fun onPause() {
@@ -225,7 +247,7 @@ class MainActivity : AppCompatActivity() {
 
         // Solo números enteros dentro de la zona de lectura (los cortados en el borde no valen)
         val z = overlay.zone
-        val cands = NumberParser.extract(lines, mode).filter {
+        val cands = NumberParser.extract(lines, mode, letters).filter {
             it.box.left >= z.left && it.box.right <= z.right && it.box.top >= z.top && it.box.bottom <= z.bottom
         }
 
@@ -285,18 +307,90 @@ class MainActivity : AppCompatActivity() {
     private fun addItem(cents: Long): SaleItem {
         val item = SaleItem(System.nanoTime(), cents)
         items.add(item)
+        record(Change.Added(item.id))
         adapter.notifyItemInserted(items.size - 1)
         numbersList.scrollToPosition(items.size - 1)
         afterChange()
         return item
     }
 
-    private fun removeItemById(id: Long) {
+    private fun removeItemById(id: Long, recordChange: Boolean = true) {
         val idx = items.indexOfFirst { it.id == id }
         if (idx < 0) return
-        items.removeAt(idx)
+        val item = items.removeAt(idx)
+        if (recordChange) record(Change.Removed(item.copy(), idx))
         adapter.notifyItemRemoved(idx)
+        // Si estaba marcado en la imagen congelada, se desmarca
+        choiceItemIds.entries.firstOrNull { it.value == id }?.let {
+            choiceItemIds.remove(it.key)
+            overlay.setChosen(it.key, false)
+        }
         afterChange()
+    }
+
+    private fun editItem(item: SaleItem, cents: Long = item.cents, discount: Int = item.discount) {
+        if (cents == item.cents && discount == item.discount) return
+        record(Change.Edited(item.id, item.cents, item.discount))
+        item.cents = cents
+        item.discount = discount
+        refreshItem(item)
+    }
+
+    // ---------- Deshacer ----------
+
+    private fun record(change: Change) {
+        undoStack.addLast(change)
+        while (undoStack.size > 200) undoStack.removeFirst()
+    }
+
+    private fun undo() {
+        when (val ch = undoStack.removeLastOrNull() ?: return) {
+            is Change.Added -> removeItemById(ch.id, recordChange = false)
+            is Change.Removed -> {
+                val idx = ch.index.coerceIn(0, items.size)
+                items.add(idx, ch.item.copy())
+                adapter.notifyItemInserted(idx)
+                numbersList.scrollToPosition(idx)
+                afterChange()
+            }
+            is Change.Edited -> {
+                val item = items.firstOrNull { it.id == ch.id }
+                if (item != null) {
+                    item.cents = ch.oldCents
+                    item.discount = ch.oldDiscount
+                    refreshItem(item)
+                }
+            }
+        }
+        updateUndo()
+    }
+
+    private fun updateUndo() {
+        val n = undoStack.size
+        undoButton.isEnabled = n > 0
+        undoButton.text = if (n > 0) n.toString() else ""
+        undoButton.alpha = if (n > 0) 1f else 0.4f
+    }
+
+    private fun attachSwipeToDelete() {
+        ItemTouchHelper(object : ItemTouchHelper.SimpleCallback(0, ItemTouchHelper.DOWN) {
+            override fun onMove(
+                rv: RecyclerView, vh: RecyclerView.ViewHolder, target: RecyclerView.ViewHolder
+            ) = false
+
+            override fun onSwiped(vh: RecyclerView.ViewHolder, direction: Int) {
+                val item = items.getOrNull(vh.bindingAdapterPosition)
+                if (item == null) {
+                    adapter.notifyDataSetChanged()
+                    return
+                }
+                removeItemById(item.id)
+                Snackbar.make(numbersList, "Borrado ${money(item.finalCents)} €", Snackbar.LENGTH_SHORT)
+                    .setAnchorView(numbersList)
+                    .setAction("Deshacer") { undo() }
+                    .show()
+            }
+        }).attachToRecyclerView(numbersList)
     }
 
     private fun refreshItem(item: SaleItem) {
@@ -307,6 +401,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun afterChange() {
         updateTotal()
+        updateUndo()
         store.saveItems(items)
     }
 
@@ -392,7 +487,7 @@ class MainActivity : AppCompatActivity() {
             } else {
                 val c = parseTyped(txt)
                 if (c == null || c <= 0) "Número no válido"
-                else { item.cents = c; refreshItem(item); null }
+                else { editItem(item, cents = c); null }
             }
         }
     }
@@ -417,7 +512,7 @@ class MainActivity : AppCompatActivity() {
         inputDialog("Descuento en % para ${money(item.cents)} €", input) { txt ->
             val d = if (txt.isEmpty()) 0 else txt.toIntOrNull()
             if (d == null || d < 0 || d > 100) "Pon un número del 0 al 100"
-            else { item.discount = d; refreshItem(item); null }
+            else { editItem(item, discount = d); null }
         }
     }
 
@@ -441,6 +536,7 @@ class MainActivity : AppCompatActivity() {
                 store.addHistory(total)
                 val n = items.size
                 items.clear()
+                undoStack.clear()
                 adapter.notifyItemRangeRemoved(0, n)
                 afterChange()
                 detector.reset()

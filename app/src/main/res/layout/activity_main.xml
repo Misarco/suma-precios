@@ -149,6 +149,23 @@
                     android:textSize="12sp" />
             </LinearLayout>
 
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnUndo"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="wrap_content"
+                android:layout_height="48dp"
+                android:layout_marginEnd="12dp"
+                android:layout_marginBottom="4dp"
+                android:contentDescription="Deshacer"
+                android:minWidth="56dp"
+                android:paddingHorizontal="12dp"
+                android:textColor="@color/paper"
+                app:cornerRadius="12dp"
+                app:icon="@drawable/ic_undo"
+                app:iconPadding="4dp"
+                app:iconTint="@color/paper"
+                app:strokeColor="@color/line" />
+
             <TextView
                 android:id="@+id/totalText"
                 android:layout_width="wrap_content"
